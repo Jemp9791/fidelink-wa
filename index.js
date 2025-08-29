@@ -1,0 +1,44 @@
+const express = require('express');
+const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+
+const app = express();
+app.use(express.json());
+
+const TOKEN = process.env.TOKEN;
+
+const client = new Client({
+  authStrategy: new LocalAuth(),
+  puppeteer: { args: ['--no-sandbox','--disable-setuid-sandbox'] }
+});
+
+client.on('qr', qr => {
+  console.log('Escaneá este QR con WhatsApp (una sola vez)');
+  qrcode.generate(qr, { small: true });
+});
+
+client.on('ready', () => console.log('WhatsApp listo ✅'));
+client.on('disconnected', (reason) => {
+  console.log('WhatsApp desconectado ❌: ' + reason);
+});
+
+client.initialize();
+
+app.post('/send', async (req, res) => {
+  try {
+    const { token, phone, message } = req.body || {};
+    if (!token || token !== TOKEN) return res.status(403).json({ error: 'forbidden' });
+    if (!phone || !message) return res.status(400).json({ error: 'missing params' });
+
+    const jid = `${String(phone).replace(/[^\d]/g, '')}@c.us`;
+    await client.sendMessage(jid, message);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'send failed' });
+  }
+});
+
+app.get('/', (_, res) => res.send('FideLink WA bridge OK'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('HTTP on ' + PORT));
